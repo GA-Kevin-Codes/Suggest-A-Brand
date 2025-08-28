@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NSI — Suggest a Brand</title>
+<style>
+  :root{--bg:#0f1117;--card:#161a22;--text:#e6e6e6;--muted:#9aa1ad;--brand:#3ea6ff;--border:#252b36}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .wrap{max-width:880px;margin:0 auto;padding:1.25rem}
+  h1{margin:.2rem 0 1rem}
+  fieldset{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:1rem;margin:1rem 0}
+  legend{color:var(--muted);padding:0 .5rem}
+  label{display:block;margin:.75rem 0}
+  input,select,textarea{width:100%;background:#0c0f14;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:.6rem .7rem}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+  .btn{background:var(--brand);color:#041019;border:none;border-radius:999px;padding:.6rem 1rem;font-weight:600;cursor:pointer}
+  .muted{color:var(--muted)}
+  .inline{display:flex;gap:.5rem;align-items:center}
+  .input-adorn{position:relative;flex:1}
+  .input-adorn input{width:100%;padding-right:12rem}
+  .adorn{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%;pointer-events:none}
+  pre{background:#0b0e13;border:1px solid var(--border);border-radius:10px;padding:.75rem;overflow:auto}
+  small.hint{display:block;color:var(--muted);margin-top:.25rem}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Name Suggestion Index — Submit a Brand</h1>
+  <p class="muted">Enter a Wikidata QID to fetch the brand name. The label appears inside the QID field (right side) and is used automatically in the JSON.</p>
+
+  <form id="nsi-form">
+    <fieldset>
+      <legend>Wikidata</legend>
+      <label>Wikidata QID
+        <div class="inline">
+          <div class="input-adorn">
+            <input id="wikidata" name="wikidata" required placeholder="e.g., Q170325" pattern="Q[0-9]+">
+            <span id="wkLabel" class="adorn" aria-live="polite" aria-atomic="true" title="Wikidata label"></span>
+          </div>
+          <button id="lookupBtn" type="button" class="btn">Lookup</button>
+        </div>
+        <small class="hint">Example: <code>Q170325</code></small>
+        <small id="wkStatus" class="hint"></small>
+      </label>
+      <!-- Hidden field to carry the fetched label through FormData -->
+      <input type="hidden" id="displayName" name="displayName">
+    </fieldset>
+
+    <fieldset>
+      <legend>Category & Location</legend>
+      <div class="row">
+        <label>OSM tag key
+          <select name="tagKey" id="tagKey">
+            <option value="amenity" selected>amenity</option>
+            <option value="shop">shop</option>
+            <option value="craft">craft</option>
+            <option value="office">office</option>
+            <option value="tourism">tourism</option>
+            <option value="leisure">leisure</option>
+            <option value="man_made">man_made</option>
+            <option value="healthcare">healthcare</option>
+          </select>
+        </label>
+        <label>OSM tag value
+          <input id="tagValue" name="tagValue" placeholder="OSM Value">
+        </label>
+      </div>
+      <div class="row">
+        <label>Include
+          <input name="include" id="include" placeholder=""
+          <small class="hint">Please refer to the <a href="https://ideditor.codes">Country Coder</a> website for values. Separate by comma.</small>
+        </label>
+        <label>Exclude
+          <input name="exclude" id="exclude" placeholder="e.g., NO">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Preview</legend>
+      <pre id="preview" aria-live="polite">{}</pre>
+    </fieldset>
+
+    <button class="btn" type="submit">Open prefilled GitHub issue</button>
+    <p id="tip" class="muted"></p>
+  </form>
+</main>
+
+<script>
+// ===== Repo config =====
+const OWNER = "osmlab";
+const REPO  = "name-suggestion-index";
+
+// ===== Tiny helpers =====
+const $ = id => document.getElementById(id);
+const form = $("nsi-form"), preview = $("preview"), tip = $("tip");
+const wikidataInput = $("wikidata"), displayNameInput = $("displayName"), wkStatus = $("wkStatus"), wkLabel = $("wkLabel"), notableEl = $("notable");
+
+const csv = s => (s||"").split(",").map(x=>x.trim()).filter(Boolean);
+const withTrailingComma = s => s.replace(/}\s*$/, '},');
+
+// Build minimal NSI object, pruning empty bits
+function toNSI(formData){
+  const displayName = (formData.get("displayName")||"").trim();
+  const tagKey      = (formData.get("tagKey")||"amenity").trim();
+  const tagValue    = (formData.get("tagValue")||"").trim();
+  const wikidata    = (formData.get("wikidata")||"").trim();
+
+  const inc = csv(formData.get("include"));
+  const obj = {
+    displayName,
+    locationSet:{ include: inc.length ? inc : ["001"] },
+    tags:{ [tagKey]: tagValue, brand: displayName }
+  };
+  const ex = csv(formData.get("exclude"));
+  if (ex.length) obj.locationSet.exclude = ex;
+  if (wikidata)  obj.tags["brand:wikidata"] = wikidata;
+  return obj;
+}
+
+function refreshPreview(){
+  const json = JSON.stringify(toNSI(new FormData(form)), null, 2);
+  preview.textContent = withTrailingComma(json);
+}
+
+// Wikidata lookup (label → displayName)
+async function lookupWikidata(qid){
+  wkStatus.textContent = "Looking up label…";
+  wkLabel.textContent = "";
+  displayNameInput.value = "";
+  try{
+    const r = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(qid)}.json`);
+    if(!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    const entity = data.entities?.[qid];
+    const label  = entity?.labels?.en?.value || Object.values(entity?.labels||{})[0]?.value || "";
+    if(label){
+      displayNameInput.value = label;        // hidden field used by FormData
+      wkLabel.textContent = label;           // visible, muted label inside the input (right side)
+      wkLabel.title = label;
+      wkStatus.textContent = ``;
+    }else{
+      wkStatus.textContent = "No label found — this item has no readable label.";
+    }
+  }catch(e){
+    wkStatus.textContent = "Couldn’t fetch Wikidata. Check the QID (e.g., Q12345).";
+  }finally{ refreshPreview(); }
+}
+
+// Events
+form.addEventListener("input", refreshPreview);
+$("lookupBtn").addEventListener("click", ()=>{
+  const qid = wikidataInput.value.trim();
+  if(!/^Q\d+$/.test(qid)) return wkStatus.textContent = "Please enter a valid QID (e.g., Q12345).";
+  lookupWikidata(qid);
+});
+wikidataInput.addEventListener("change", ()=>{ const qid = wikidataInput.value.trim(); if(/^Q\d+$/.test(qid)) lookupWikidata(qid); else { wkLabel.textContent=""; displayNameInput.value=""; refreshPreview(); }});
+
+// Submit → open prefilled GitHub issue
+form.addEventListener("submit", e=>{
+  e.preventDefault();
+  const obj = toNSI(new FormData(form));
+  if(!obj.displayName){ tip.textContent = "Please look up the Wikidata label first."; return; }
+
+  const firstTagKey = Object.keys(obj.tags).find(k=>k!=="brand" && k!=="brand:wikidata") || "amenity";
+  const firstTagVal = String(obj.tags[firstTagKey]||"").trim();
+  const title = `${obj.displayName} — ${firstTagKey}=${firstTagVal} (${(obj.locationSet.include||[]).join(',')||'001'})`;
+
+  // Build data file link (spaces → underscores)
+  const fileVal = firstTagVal.replace(/\s+/g, "_");
+  const dataFileUrl = `https://github.com/${OWNER}/${REPO}/blob/main/data/brands/${firstTagKey}/${fileVal}.json`;
+
+  let body = "```json\n" + withTrailingComma(JSON.stringify(obj, null, 2)) + "\n```";
+  const notes = [];
+  if (notableEl?.checked) notes.push("notable: yes");
+  notes.push(`data file: ${dataFileUrl}`);
+  body += "\n\n**Notes to editors**\n\n" + notes.join("\n");
+
+  const url = new URL(`https://github.com/${OWNER}/${REPO}/issues/new`);
+  url.searchParams.set("title", title);
+  url.searchParams.set("body", body);
+  window.open(url.toString(), "_blank", "noopener");
+});
+
+// init
+refreshPreview();
+</script>
+</body>
+</html>
