@@ -68,8 +68,8 @@
       </div>
       <div class="row">
         <label>Include
-          <input name="include" id="include" placeholder=""
-          <small class="hint">Please refer to the <a href="https://ideditor.codes">Country Coder</a> website for values. Separate by comma.</small>
+          <input name="include" id="include" placeholder="">
+          <small class="hint">Defaults to the brand's country or service area from Wikidata. You can override with <a href="https://ideditor.codes">Country Coder</a> values, separated by comma.</small>
         </label>
         <label>Exclude
           <input name="exclude" id="exclude" placeholder="e.g., NO">
@@ -95,7 +95,7 @@ const REPO  = "name-suggestion-index";
 // ===== Tiny helpers =====
 const $ = id => document.getElementById(id);
 const form = $("nsi-form"), preview = $("preview"), tip = $("tip");
-const wikidataInput = $("wikidata"), displayNameInput = $("displayName"), wkStatus = $("wkStatus"), wkLabel = $("wkLabel"), notableEl = $("notable");
+const wikidataInput = $("wikidata"), displayNameInput = $("displayName"), wkStatus = $("wkStatus"), wkLabel = $("wkLabel"), notableEl = $("notable"), includeInput = $("include");
 
 const csv = s => (s||"").split(",").map(x=>x.trim()).filter(Boolean);
 const withTrailingComma = s => s.replace(/}\s*$/, '},');
@@ -140,12 +140,44 @@ async function lookupWikidata(qid){
       wkLabel.textContent = label;           // visible, muted label inside the input (right side)
       wkLabel.title = label;
       wkStatus.textContent = ``;
+      await populateLocation(entity);
     }else{
       wkStatus.textContent = "No label found — this item has no readable label.";
     }
   }catch(e){
     wkStatus.textContent = "Couldn’t fetch Wikidata. Check the QID (e.g., Q12345).";
   }finally{ refreshPreview(); }
+}
+
+// Populate include field from Wikidata P2541 (service area) or P17 (country)
+async function populateLocation(entity){
+  const qids = [];
+  ["P2541", "P17"].forEach(pid => {
+    (entity?.claims?.[pid] || []).forEach(claim => {
+      const id = claim?.mainsnak?.datavalue?.value?.id;
+      if (id) qids.push(id);
+    });
+  });
+  if(!qids.length) return;
+  const codes = await qidsToIso2(qids);
+  if(codes.length) includeInput.value = codes.join(', ');
+}
+
+// Convert Wikidata QIDs to ISO 3166-1 alpha-2 codes
+async function qidsToIso2(qids){
+  try{
+    const r = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${qids.join('|')}.json`);
+    if(!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    const codes = [];
+    qids.forEach(id => {
+      const code = data.entities?.[id]?.claims?.P297?.[0]?.mainsnak?.datavalue?.value;
+      if(code) codes.push(code.toLowerCase());
+    });
+    return Array.from(new Set(codes));
+  }catch(e){
+    return [];
+  }
 }
 
 // Events
