@@ -69,7 +69,7 @@
       <div class="row">
         <label>Include
           <input name="include" id="include" placeholder="">
-          <small class="hint">Defaults to the brand's country or service area from Wikidata. You can override with <a href="https://ideditor.codes">Country Coder</a> values, separated by comma.</small>
+          <small class="hint">Defaults to the brand's service area or country from Wikidata. You can override with <a href="https://ideditor.codes">Country Coder</a> values, separated by comma.</small>
         </label>
         <label>Exclude
           <input name="exclude" id="exclude" placeholder="e.g., NO">
@@ -149,19 +149,23 @@ async function lookupWikidata(qid){
   }finally{ refreshPreview(); }
 }
 
-// Populate include field from Wikidata P2541 (service area) or P17 (country)
-async function populateLocation(entity){
-  const qids = [];
-  ["P2541", "P17"].forEach(pid => {
-    (entity?.claims?.[pid] || []).forEach(claim => {
-      const id = claim?.mainsnak?.datavalue?.value?.id;
-      if (id) qids.push(id);
-    });
-  });
-  if(!qids.length) return;
-  const codes = await qidsToIso2(qids);
-  if(codes.length) includeInput.value = codes.join(', ');
-}
+  // Populate include field from Wikidata: service area (P2541) first, then country (P17)
+  async function populateLocation(entity){
+    for (const pid of ["P2541", "P17"]) {
+      const qids = [];
+      (entity?.claims?.[pid] || []).forEach(claim => {
+        const id = claim?.mainsnak?.datavalue?.value?.id;
+        if (id) qids.push(id);
+      });
+      if (!qids.length) continue;
+      const codes = await qidsToIso2(qids);
+      if (codes.length) {
+        includeInput.value = codes.join(', ');
+        return;
+      }
+    }
+    includeInput.value = '001';
+  }
 
 // Convert Wikidata QIDs to ISO 3166-1 alpha-2 codes
 async function qidsToIso2(qids){
