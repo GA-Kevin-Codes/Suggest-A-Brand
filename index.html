@@ -211,7 +211,7 @@ form.addEventListener("submit", e=>{
   const notes = [];
   if (notableEl?.checked) notes.push("notable: yes");
   notes.push(`data file: ${dataFileUrl}`);
-  body += "\n\n**Notes to editors**\n\n" + notes.join("\n") + "\nCreated with https://ga-kevin-codes.github.io/Suggest-A-Brand/";
+  body += "\n\n**Notes to editors**\n\nCreated with https://ga-kevin-codes.github.io/Suggest-A-Brand/\n" + notes.join("\n");
 
   const url = new URL(`https://github.com/${OWNER}/${REPO}/issues/new`);
   url.searchParams.set("title", title);
