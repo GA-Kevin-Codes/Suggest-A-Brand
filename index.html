@@ -19,8 +19,7 @@
   .inline{display:flex;gap:.5rem;align-items:center}
   .input-adorn{position:relative;flex:1}
   .input-adorn input{width:100%;padding-right:12rem}
-  .adorn{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%;pointer-events:none}
-  pre{background:#0b0e13;border:1px solid var(--border);border-radius:10px;padding:.75rem;overflow:auto}
+  .adorn{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%;pointer-events:[...]\n  pre{background:#0b0e13;border:1px solid var(--border);border-radius:10px;padding:.75rem;overflow:auto}
   small.hint{display:block;color:var(--muted);margin-top:.25rem}
 </style>
 </head>
@@ -97,7 +96,7 @@ const $ = id => document.getElementById(id);
 const form = $("nsi-form"), preview = $("preview"), tip = $("tip");
 const wikidataInput = $("wikidata"), displayNameInput = $("displayName"), wkStatus = $("wkStatus"), wkLabel = $("wkLabel"), notableEl = $("notable"), includeInput = $("include");
 
-const csv = s => (s||"").split(",").map(x=>x.trim()).filter(Boolean);
+const csv = s => (s||"%").split(",").map(x=>x.trim()).filter(Boolean);
 const withTrailingComma = s => s.replace(/}\s*$/, '},');
 
 // Build minimal NSI object, pruning empty bits
@@ -111,7 +110,7 @@ function toNSI(formData){
   const obj = {
     displayName,
     locationSet:{ include: inc.length ? inc : ["001"] },
-    tags:{ [tagKey]: tagValue, brand: displayName }
+    tags:{ [tagKey]: tagValue, brand: displayName, name: displayName }
   };
   const ex = csv(formData.get("exclude"));
   if (ex.length) obj.locationSet.exclude = ex;
