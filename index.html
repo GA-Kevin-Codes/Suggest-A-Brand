@@ -115,6 +115,7 @@ function toNSI(formData){
   const inc = csv(formData.get("include"));
   const obj = {
     displayName,
+    id: displayName,
     locationSet:{ include: inc.length ? inc : ["001"] },
     tags:{ [tagKey]: tagValue, name: displayName, brand: displayName }
   };
