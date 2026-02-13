@@ -71,7 +71,7 @@
           <small class="hint">Defaults to the brand's service area or country from Wikidata. You can override with <a href="https://ideditor.codes">Country Coder</a> values, separated by comma.</small>
         </label>
         <label>Exclude
-          <input name="exclude" id="exclude" placeholder="e.g., NO">
+          <input name="exclude" id="exclude" placeholder="e.g. US,NO">
         </label>
       </div>
     </fieldset>
@@ -116,7 +116,7 @@ function toNSI(formData){
   const obj = {
     displayName,
     locationSet:{ include: inc.length ? inc : ["001"] },
-    tags:{ [tagKey]: tagValue, brand: displayName, name: displayName }
+    tags:{ [tagKey]: tagValue, name: displayName, brand: displayName }
   };
   const ex = csv(formData.get("exclude"));
   if (ex.length) obj.locationSet.exclude = ex;
