@@ -1,0 +1,1 @@
+This tool has been moved to [Codeberg Pages](https://codeberg.page/) ([Tool](https://ga-kevin-codes.codeberg.page/Suggest-A-Brand/) • [Repository](https://codeberg.org/GA-Kevin-Codes/Suggest-A-Brand) • [Issues](https://codeberg.org/GA-Kevin-Codes/Suggest-A-Brand/issues))
