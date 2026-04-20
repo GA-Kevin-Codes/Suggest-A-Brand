@@ -91,6 +91,14 @@
           <input name="exclude" id="exclude" placeholder="e.g. US,NO">
         </label>
       </div>
+      <div class="row">
+        <label>Number of locations
+          <input id="locationCount" name="locationCount" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 58">
+        </label>
+        <label>Location URL
+          <input id="locationUrl" name="locationUrl" type="url" placeholder="https://example.com/locations">
+        </label>
+      </div>
     </fieldset>
 
     <fieldset>
@@ -120,6 +128,27 @@ const includeInput = $("include");
 
 const csv = s => String(s ?? "").split(",").map(x => x.trim()).filter(Boolean);
 const withTrailingComma = s => s.replace(/}\s*$/, '},');
+const upper = s => String(s ?? "").trim().toUpperCase();
+
+function formatCountryList(codes){
+  const normalized = (codes || []).map(upper).filter(Boolean);
+  if (!normalized.length) return "001";
+  if (normalized.length === 1) {
+    if (normalized[0] === "001") return "worldwide";
+    if (normalized[0] === "US") return "the US";
+    return normalized[0];
+  }
+  return normalized.join(", ");
+}
+
+function formatLocationSummary(locationCount, codes){
+  const count = String(locationCount || "").trim();
+  const area = formatCountryList(codes);
+  if (!count) return area;
+  const noun = count === "1" ? "location" : "locations";
+  if (area === "worldwide") return `${count} ${noun} worldwide`;
+  return `${count} ${noun} in ${area}`;
+}
 
 // Build minimal NSI object, pruning empty bits
 function toNSI(formData){
@@ -214,12 +243,16 @@ $("lookupBtn").addEventListener("click", ()=>{
 // Submit → open prefilled GitHub issue
 form.addEventListener("submit", e=>{
   e.preventDefault();
-  const obj = toNSI(new FormData(form));
+  const formData = new FormData(form);
+  const obj = toNSI(formData);
   if(!obj.displayName){ tip.textContent = "Please look up the Wikidata label first."; return; }
 
   const firstTagKey = Object.keys(obj.tags).find(k=>k!=="brand" && k!=="brand:wikidata") || "amenity";
   const firstTagVal = String(obj.tags[firstTagKey]||"").trim();
-  const title = `${obj.displayName} — ${firstTagKey}=${firstTagVal} (${(obj.locationSet.include||[]).join(',')||'001'})`;
+  const locationCount = String(formData.get("locationCount") || "").trim();
+  const locationUrl = String(formData.get("locationUrl") || "").trim();
+  const locationSummary = formatLocationSummary(locationCount, obj.locationSet.include || []);
+  const title = `${obj.displayName} — ${firstTagKey}=${firstTagVal} (${locationSummary})`;
 
   const fileVal = firstTagVal.replace(/\s+/g, "_");
   const dataFileUrl = `https://github.com/${OWNER}/${REPO}/blob/main/data/brands/${firstTagKey}/${fileVal}.json`;
@@ -228,8 +261,9 @@ form.addEventListener("submit", e=>{
 
   let body = "```json\n" + withTrailingComma(JSON.stringify(obj, null, 2)) + "\n```";
   body += "\n\n**Notes to editors**\n\nCreated with https://ga-kevin-codes.github.io/Suggest-A-Brand/\n";
-  if (wikidataUrl) body += `wikidata item: ${wikidataUrl}\n`;
-  body += `data file: ${dataFileUrl}`;
+  if (wikidataUrl) body += `Wikidata item: ${wikidataUrl}\n`;
+  if (locationUrl) body += `Location URL: ${locationUrl}\n`;
+  body += `Data file: ${dataFileUrl}`;
 
   const url = new URL(`https://github.com/${OWNER}/${REPO}/issues/new`);
   url.searchParams.set("title", title);
