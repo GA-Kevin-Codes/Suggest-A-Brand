@@ -16,32 +16,47 @@
   .row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
   .btn{background:var(--brand);color:#041019;border:none;border-radius:999px;padding:.6rem 1rem;font-weight:600;cursor:pointer}
   .muted{color:var(--muted)}
-  .inline{display:flex;gap:.5rem;align-items:center}
-  .input-adorn{position:relative;flex:1}
-  .input-adorn input{width:100%;padding-right:12rem}
-  .adorn{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%;pointer-events:[...]\n  pre{background:#0b0e13;border:1px solid var(--border);border-radius:10px;padding:.75rem;overflow:auto}
+  pre{background:#0b0e13;border:1px solid var(--border);border-radius:10px;padding:.75rem;overflow:auto}
   small.hint{display:block;color:var(--muted);margin-top:.25rem}
+  /* Wikidata combobox */
+  .wk-combo{position:relative;display:flex}
+  .wk-combo>input{flex:1;border-radius:10px 0 0 10px;border-right:none;min-width:0}
+  .wk-combo>input:focus{outline:none;border-color:var(--brand);z-index:1}
+  .wk-btn{background:var(--brand);color:#041019;border:none;border-radius:0 10px 10px 0;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;flex-shrink:0}
+  .wk-list{position:absolute;top:calc(100% + 4px);left:0;right:0;list-style:none;margin:0;padding:0;
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 6px 24px rgba(0,0,0,.6);z-index:100;max-height:272px;overflow-y:auto;display:none}
+  .wk-list.open{display:block}
+  .wk-list li{padding:.6rem .85rem;cursor:pointer;border-bottom:1px solid var(--border);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wk-list li:last-child{border-bottom:none}
+  .wk-list li:hover,.wk-list li.active{background:var(--bg)}
+  .wl-name{font-weight:600}
+  .wl-qid{color:var(--muted);font-size:.88em}
+  .wl-sep{color:var(--muted);font-size:.88em}
+  .wl-desc{color:var(--muted);font-size:.88em}
 </style>
 </head>
 <body>
 <main class="wrap">
   <h1>Suggest-A-Brand</h1>
   <h2>Name Suggestion Index</h2>
-  <p class="muted">Enter a Wikidata QID to fetch the brand name. The label appears inside the QID field (right side) and is used automatically in the JSON.</p>
+  <p class="muted">Search for a brand by name or QID and select a result to auto-fill the form.</p>
   <p><a href="https://github.com/GA-Kevin-Codes/Suggest-A-Brand">Suggest-A-Brand on GitHub</a>.</p>
 
   <form id="nsi-form">
     <fieldset>
       <legend>Wikidata</legend>
-      <label>Wikidata QID
-        <div class="inline">
-          <div class="input-adorn">
-            <input id="wikidata" name="wikidata" required placeholder="e.g., Q138100855" pattern="Q[0-9]+">
-            <span id="wkLabel" class="adorn" aria-live="polite" aria-atomic="true" title="Wikidata label"></span>
-          </div>
-          <button id="lookupBtn" type="button" class="btn">Lookup</button>
+      <label>Brand search
+        <div class="wk-combo">
+          <input id="wikidata" name="wikidata" required autocomplete="off"
+                 placeholder="Brand name or Q-code — e.g. McDonald's or Q38076"
+                 role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
+                 aria-expanded="false" aria-controls="wkList">
+          <button id="lookupBtn" type="button" class="wk-btn">Lookup</button>
+          <ul id="wkList" class="wk-list" role="listbox"></ul>
         </div>
-        <small class="hint">Example: <code>Q138100855</code></small>
+        <small class="hint">Type to search — select a suggestion, or enter a QID directly and press Lookup.</small>
         <small id="wkStatus" class="hint"></small>
       </label>
       <!-- Hidden field to carry the fetched label through FormData -->
@@ -101,7 +116,6 @@ const tip = $("tip");
 const wikidataInput = $("wikidata");
 const displayNameInput = $("displayName");
 const wkStatus = $("wkStatus");
-const wkLabel = $("wkLabel");
 const includeInput = $("include");
 
 const csv = s => String(s ?? "").split(",").map(x => x.trim()).filter(Boolean);
@@ -132,10 +146,9 @@ function refreshPreview(){
   preview.textContent = withTrailingComma(json);
 }
 
-// Wikidata lookup (label → displayName)
+// Wikidata lookup (QID → label + location)
 async function lookupWikidata(qid){
-  wkStatus.textContent = "Looking up label…";
-  wkLabel.textContent = "";
+  wkStatus.textContent = "Looking up…";
   displayNameInput.value = "";
   try{
     const r = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(qid)}.json`);
@@ -144,36 +157,34 @@ async function lookupWikidata(qid){
     const entity = data.entities?.[qid];
     const label  = entity?.labels?.en?.value || Object.values(entity?.labels||{})[0]?.value || "";
     if(label){
-      displayNameInput.value = label;        // hidden field used by FormData
-      wkLabel.textContent = label;           // visible, muted label inside the input (right side)
-      wkLabel.title = label;
-      wkStatus.textContent = ``;
+      displayNameInput.value = label;
+      wkStatus.textContent = `✓ ${label}`;
       await populateLocation(entity);
     }else{
       wkStatus.textContent = "No label found — this item has no readable label.";
     }
   }catch(e){
-    wkStatus.textContent = "Couldn’t fetch Wikidata. Check the QID (e.g., Q12345).";
+    wkStatus.textContent = "Couldn't fetch Wikidata. Check the QID (e.g., Q12345).";
   }finally{ refreshPreview(); }
 }
 
-  // Populate include field from Wikidata: service area (P2541) first, then country (P17)
-  async function populateLocation(entity){
-    for (const pid of ["P2541", "P17"]) {
-      const qids = [];
-      (entity?.claims?.[pid] || []).forEach(claim => {
-        const id = claim?.mainsnak?.datavalue?.value?.id;
-        if (id) qids.push(id);
-      });
-      if (!qids.length) continue;
-      const codes = await qidsToIso2(qids);
-      if (codes.length) {
-        includeInput.value = codes.join(', ');
-        return;
-      }
+// Populate include field from Wikidata: service area (P2541) first, then country (P17)
+async function populateLocation(entity){
+  for (const pid of ["P2541", "P17"]) {
+    const qids = [];
+    (entity?.claims?.[pid] || []).forEach(claim => {
+      const id = claim?.mainsnak?.datavalue?.value?.id;
+      if (id) qids.push(id);
+    });
+    if (!qids.length) continue;
+    const codes = await qidsToIso2(qids);
+    if (codes.length) {
+      includeInput.value = codes.join(', ');
+      return;
     }
-    includeInput.value = '001';
   }
+  includeInput.value = '001';
+}
 
 // Convert Wikidata QIDs to ISO 3166-1 alpha-2 codes
 async function qidsToIso2(qids){
@@ -199,7 +210,6 @@ $("lookupBtn").addEventListener("click", ()=>{
   if(!/^Q\d+$/.test(qid)) return wkStatus.textContent = "Please enter a valid QID (e.g., Q12345).";
   lookupWikidata(qid);
 });
-wikidataInput.addEventListener("change", ()=>{ const qid = wikidataInput.value.trim(); if(/^Q\d+$/.test(qid)) lookupWikidata(qid); else { wkLabel.textContent=""; displayNameInput.value=""; refreshPreview(); }});
 
 // Submit → open prefilled GitHub issue
 form.addEventListener("submit", e=>{
@@ -211,7 +221,6 @@ form.addEventListener("submit", e=>{
   const firstTagVal = String(obj.tags[firstTagKey]||"").trim();
   const title = `${obj.displayName} — ${firstTagKey}=${firstTagVal} (${(obj.locationSet.include||[]).join(',')||'001'})`;
 
-  // Build data file link (spaces → underscores)
   const fileVal = firstTagVal.replace(/\s+/g, "_");
   const dataFileUrl = `https://github.com/${OWNER}/${REPO}/blob/main/data/brands/${firstTagKey}/${fileVal}.json`;
 
@@ -224,6 +233,84 @@ form.addEventListener("submit", e=>{
   url.searchParams.set("body", body);
   window.open(url.toString(), "_blank", "noopener");
 });
+
+  // ===== Autocomplete =====
+  function detectLang(text) {
+    if (/[\u0400-\u04FF]/.test(text)) return 'ru';
+    if (/[\u0600-\u06FF]/.test(text)) return 'ar';
+    if (/[\u4E00-\u9FFF]/.test(text)) return 'zh';
+    if (/[\u3040-\u30FF]/.test(text)) return 'ja';
+    if (/[\uAC00-\uD7AF]/.test(text)) return 'ko';
+    return 'en';
+  }
+
+  const wkList = $("wkList");
+  let acTimer = null;
+  let activeIdx = -1;
+
+  function closeSuggestions() {
+    wkList.classList.remove('open');
+    wikidataInput.setAttribute('aria-expanded', 'false');
+    activeIdx = -1;
+  }
+
+  function setActive(idx) {
+    const items = wkList.querySelectorAll('li');
+    items.forEach((li, i) => li.classList.toggle('active', i === idx));
+    activeIdx = idx;
+  }
+
+  function renderSuggestions(results) {
+    wkList.innerHTML = '';
+    if (!results.length) { closeSuggestions(); return; }
+    results.forEach(item => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      const name = item.label || item.id;
+      const desc = item.description
+        ? ` <span class="wl-sep">—</span> <span class="wl-desc">${item.description}</span>`
+        : '';
+      li.innerHTML = `<span class="wl-name">${name}</span> <span class="wl-qid">(${item.id})</span>${desc}`;
+      li.addEventListener('mousedown', e => {
+        e.preventDefault();
+        wikidataInput.value = item.id;
+        closeSuggestions();
+        lookupWikidata(item.id);
+      });
+      wkList.appendChild(li);
+    });
+    wkList.classList.add('open');
+    wikidataInput.setAttribute('aria-expanded', 'true');
+    activeIdx = -1;
+  }
+
+  async function searchSuggestions(query) {
+    const lang = detectLang(query);
+    try {
+      const r = await fetch(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&origin=*&language=${lang}&limit=8&search=${encodeURIComponent(query)}`);
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      renderSuggestions(data.search || []);
+    } catch (e) { closeSuggestions(); }
+  }
+
+  wikidataInput.addEventListener('input', () => {
+    const val = wikidataInput.value.trim();
+    clearTimeout(acTimer);
+    if (val.length < 2) { closeSuggestions(); return; }
+    acTimer = setTimeout(() => searchSuggestions(val), 300);
+  });
+
+  wikidataInput.addEventListener('keydown', e => {
+    const items = wkList.querySelectorAll('li');
+    if (!items.length || !wkList.classList.contains('open')) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(activeIdx + 1, items.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
+    else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); items[activeIdx].dispatchEvent(new MouseEvent('mousedown')); }
+    else if (e.key === 'Escape') { closeSuggestions(); }
+  });
+
+  wikidataInput.addEventListener('blur', () => setTimeout(closeSuggestions, 150));
 
 // init
 refreshPreview();
